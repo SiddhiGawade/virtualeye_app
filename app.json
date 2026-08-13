@@ -1,23 +1,37 @@
 {
   "expo": {
-    "name": "ve",
-    "slug": "ve",
+    "name": "Virtual Eye",
+    "slug": "virtual-eye",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "scheme": "virtualeye",
+    "description": "A private camera assistant that describes the world aloud.",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.virtualeye.app"
     },
     "android": {
+      "package": "com.virtualeye.app",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#07111F",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
     },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Virtual Eye uses the camera to understand the world around you.",
+          "recordAudioAndroid": false
+        }
+      ],
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
