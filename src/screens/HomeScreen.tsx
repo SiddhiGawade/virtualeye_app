@@ -1,28 +1,63 @@
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import * as Speech from 'expo-speech';
 import { useVoiceCommands } from '../hooks/useVoiceCommands';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const COLORS = {
-    background: '#07111F',
-    surface: '#0D1C2F',
-    surfaceRaised: '#132640',
-    text: '#F6FAFF',
-    textMuted: '#9CAEC4',
-    textDim: '#6E829B',
-    accent: '#74E2D0',
-    accentSoft: '#B7F3E9',
-    accentDark: '#163E3A',
-    border: '#213752',
+const C = {
+    bg: '#060E1A',
+    surface: '#0C1929',
+    surfaceHigh: '#112236',
+    text: '#F0F6FF',
+    textSub: '#8BA0B8',
+    textDim: '#4F6478',
+    accent: '#5EEAD4',
+    accentDim: '#0D3330',
+    border: '#1A2E42',
+    white: '#FFFFFF',
 };
+
+type FeatureCard = {
+    route: '/camera' | '/text-reader' | '/settings';
+    label: string;
+    title: string;
+    desc: string;
+    accent: boolean;
+    tag: string;
+};
+
+const CARDS: FeatureCard[] = [
+    {
+        route: '/camera',
+        label: 'Start camera',
+        title: 'Scene Camera',
+        desc: 'Live scene captioning with on-device ML — no internet required',
+        accent: true,
+        tag: 'LIVE',
+    },
+    {
+        route: '/text-reader',
+        label: 'Open text reader',
+        title: 'Text Reader',
+        desc: 'Point at any text and have it read aloud instantly',
+        accent: false,
+        tag: 'OCR',
+    },
+    {
+        route: '/settings',
+        label: 'Open settings',
+        title: 'Settings',
+        desc: 'Permissions, speech preferences and app info',
+        accent: false,
+        tag: 'CONFIG',
+    },
+];
 
 export default function HomeScreen() {
     const router = useRouter();
     const [voiceEnabled, setVoiceEnabled] = useState(false);
 
-    // Only enable voice when this screen is focused
     useFocusEffect(
         useCallback(() => {
             setVoiceEnabled(true);
@@ -32,202 +67,156 @@ export default function HomeScreen() {
 
     const { voiceState } = useVoiceCommands(voiceEnabled, (intent) => {
         switch (intent) {
-            case 'START_CAMERA':
-                router.push('/camera');
-                break;
-            case 'OPEN_TEXT_READER':
-                router.push('/text-reader');
-                break;
+            case 'START_CAMERA': router.push('/camera'); break;
+            case 'OPEN_TEXT_READER': router.push('/text-reader'); break;
             case 'GO_HOME':
-            case 'STOP_SPEECH':
-                void Speech.stop();
-                break;
-            default:
-                break;
+            case 'STOP_SPEECH': void Speech.stop(); break;
+            default: break;
         }
     });
 
+    const isAwake = voiceState === 'awake';
+
     return (
-        <SafeAreaView style={styles.safe}>
-            <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <SafeAreaView style={s.safe}>
+            <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
                 {/* Header */}
-                <View style={styles.header}>
-                    <View style={styles.brandMark}>
-                        <View style={styles.brandMarkInner} />
+                <View style={s.header}>
+                    <View style={s.logo}>
+                        <View style={s.logoInner} />
                     </View>
-                    <Text style={styles.brandName}>VIRTUAL EYE</Text>
+                    <Text style={s.logoText}>VIRTUAL EYE</Text>
+                    <View style={s.headerRight}>
+                        <View style={[s.micDot, voiceState === 'listening' && s.micDotActive, isAwake && s.micDotAwake]} />
+                    </View>
                 </View>
 
                 {/* Hero */}
-                <View style={styles.hero}>
-                    <View style={styles.eyebrowRow}>
-                        <View style={styles.eyebrowLine} />
-                        <Text style={styles.eyebrow}>PERSONAL ASSISTIVE VISION</Text>
-                    </View>
-                    <Text style={styles.heroTitle}>
-                        See what is{'\n'}
-                        <Text style={styles.heroAccent}>in front of you.</Text>
-                    </Text>
-                    <Text style={styles.heroDescription}>
-                        Virtual Eye watches the live camera, understands the scene, and speaks
-                        the latest description so you can move through the world with more confidence.
+                <View style={s.hero}>
+                    <Text style={s.heroLabel}>ASSISTIVE VISION</Text>
+                    <Text style={s.heroTitle}>See what's{'\n'}<Text style={s.heroAccent}>in front of you.</Text></Text>
+                    <Text style={s.heroSub}>
+                        Virtual Eye describes your surroundings in real time using on-device AI - privately, quietly, instantly.
                     </Text>
                 </View>
 
-                {/* Feature Cards */}
-                <View style={styles.cards}>
-
-                    {/* Start Camera */}
-                    <Pressable
-                        style={({ pressed }) => [styles.primaryCard, pressed && styles.pressed]}
-                        accessibilityRole="button"
-                        accessibilityLabel="Start camera"
-                        onPress={() => router.push('/camera')}
-                    >
-                        <View style={styles.cardIcon}>
-                            <View style={styles.dot} />
-                        </View>
-                        <View style={styles.cardBody}>
-                            <Text style={styles.cardTitle}>Scene Camera</Text>
-                            <Text style={styles.cardDesc}>Live scene captioning with on-device ML</Text>
-                        </View>
-                        <Text style={styles.cardArrow}>→</Text>
-                    </Pressable>
-
-                    {/* Text Reader */}
-                    <Pressable
-                        style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-                        accessibilityRole="button"
-                        accessibilityLabel="Open text reader"
-                        onPress={() => router.push('/text-reader')}
-                    >
-                        <View style={styles.cardIcon}>
-                            <View style={[styles.dot, styles.dotMuted]} />
-                        </View>
-                        <View style={styles.cardBody}>
-                            <Text style={styles.cardTitle}>Text Reader</Text>
-                            <Text style={styles.cardDesc}>Capture and read visible text aloud</Text>
-                        </View>
-                        <Text style={styles.cardArrow}>→</Text>
-                    </Pressable>
-
-                    {/* Settings */}
-                    <Pressable
-                        style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-                        accessibilityRole="button"
-                        accessibilityLabel="Open settings"
-                        onPress={() => router.push('/settings')}
-                    >
-                        <View style={styles.cardIcon}>
-                            <View style={[styles.dot, styles.dotMuted]} />
-                        </View>
-                        <View style={styles.cardBody}>
-                            <Text style={styles.cardTitle}>Settings</Text>
-                            <Text style={styles.cardDesc}>Permissions, speech and display preferences</Text>
-                        </View>
-                        <Text style={styles.cardArrow}>→</Text>
-                    </Pressable>
-
+                {/* Cards */}
+                <View style={s.cards}>
+                    {CARDS.map((card) => (
+                        <Pressable
+                            key={card.route}
+                            accessibilityRole="button"
+                            accessibilityLabel={card.label}
+                            onPress={() => router.push(card.route)}
+                            style={({ pressed }) => [
+                                s.card,
+                                card.accent && s.cardAccent,
+                                pressed && s.pressed,
+                            ]}
+                        >
+                            <View style={s.cardTop}>
+                                <View style={[s.cardTag, card.accent && s.cardTagAccent]}>
+                                    <Text style={[s.cardTagText, card.accent && s.cardTagTextAccent]}>{card.tag}</Text>
+                                </View>
+                                <Text style={[s.cardArrow, card.accent && s.cardArrowAccent]}>→</Text>
+                            </View>
+                            <Text style={[s.cardTitle, card.accent && s.cardTitleAccent]}>{card.title}</Text>
+                            <Text style={[s.cardDesc, card.accent && s.cardDescAccent]}>{card.desc}</Text>
+                        </Pressable>
+                    ))}
                 </View>
 
-                {/* Footer note */}
-                <Text style={styles.footerNote}>Camera access is used only while you are scanning.</Text>
-
-                {/* Voice status indicator */}
-                <View style={styles.voiceStatus}>
-                    <View style={[
-                        styles.voiceDot,
-                        voiceState === 'awake' && styles.voiceDotAwake,
-                        voiceState === 'listening' && styles.voiceDotListening,
-                    ]} />
-                    <Text style={styles.voiceStatusText}>
-                        {voiceState === 'listening' && 'SAY "HEY VISION" TO WAKE'}
-                        {voiceState === 'awake' && 'LISTENING — SAY A COMMAND'}
-                        {voiceState === 'processing' && 'PROCESSING...'}
-                        {voiceState === 'permission_denied' && 'MICROPHONE PERMISSION DENIED'}
-                        {voiceState === 'error' && 'VOICE UNAVAILABLE'}
-                        {voiceState === 'idle' && 'VOICE OFF'}
+                {/* Voice bar */}
+                <View style={[s.voiceBar, isAwake && s.voiceBarAwake]}>
+                    <View style={[s.voicePulse, isAwake && s.voicePulseAwake]} />
+                    <Text style={[s.voiceText, isAwake && s.voiceTextAwake]}>
+                        {voiceState === 'idle' && 'Voice off'}
+                        {voiceState === 'listening' && 'Say "Hey Vision" to start'}
+                        {voiceState === 'awake' && 'Listening — say a command'}
+                        {voiceState === 'processing' && 'Processing command...'}
+                        {voiceState === 'permission_denied' && 'Microphone permission denied'}
+                        {voiceState === 'error' && 'Voice recognition unavailable'}
                     </Text>
                 </View>
+
+                <Text style={s.privacy}>All processing happens on your device. No data leaves your phone.</Text>
 
             </ScrollView>
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: COLORS.background },
-    container: { paddingHorizontal: 24, paddingTop: 18, paddingBottom: 32 },
+const s = StyleSheet.create({
+    safe: { flex: 1, backgroundColor: C.bg },
+    scroll: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 36 },
+
     header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    brandMark: {
-        width: 27, height: 27, borderRadius: 8, borderWidth: 2,
-        borderColor: COLORS.accent, alignItems: 'center', justifyContent: 'center',
+    logo: {
+        width: 28, height: 28, borderRadius: 8, borderWidth: 2,
+        borderColor: C.accent, alignItems: 'center', justifyContent: 'center',
         transform: [{ rotate: '45deg' }],
     },
-    brandMarkInner: {
-        width: 9, height: 9, borderRadius: 4, backgroundColor: COLORS.accent,
-        transform: [{ rotate: '-45deg' }],
-    },
-    brandName: { color: COLORS.text, fontSize: 14, fontWeight: '700', letterSpacing: 2.4 },
-    hero: { marginTop: 36 },
-    eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 16 },
-    eyebrowLine: { width: 28, height: 2, backgroundColor: COLORS.accent },
-    eyebrow: { color: COLORS.accent, fontSize: 10, fontWeight: '700', letterSpacing: 1.8 },
-    heroTitle: { color: COLORS.text, fontSize: 40, fontWeight: '700', letterSpacing: -1.5, lineHeight: 44 },
-    heroAccent: { color: COLORS.accent },
-    heroDescription: { color: COLORS.textMuted, fontSize: 15, lineHeight: 23, marginTop: 16 },
-    cards: { marginTop: 32, gap: 12 },
-    primaryCard: {
-        backgroundColor: COLORS.accent, borderRadius: 16,
-        flexDirection: 'row', alignItems: 'center', padding: 18, gap: 14,
-    },
-    card: {
-        backgroundColor: COLORS.surface, borderRadius: 16, borderWidth: 1,
-        borderColor: COLORS.border, flexDirection: 'row', alignItems: 'center',
-        padding: 18, gap: 14,
-    },
-    pressed: { opacity: 0.72 },
-    cardIcon: {
-        width: 40, height: 40, borderRadius: 12,
-        backgroundColor: 'rgba(0,0,0,0.15)', alignItems: 'center', justifyContent: 'center',
-    },
-    dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.background },
-    dotMuted: { backgroundColor: COLORS.accent },
-    cardBody: { flex: 1 },
-    cardTitle: { color: COLORS.background, fontSize: 15, fontWeight: '700' },
-    cardDesc: { color: 'rgba(7,17,31,0.65)', fontSize: 12, marginTop: 3 },
-    cardArrow: { color: COLORS.background, fontSize: 20 },
-    footerNote: {
-        color: COLORS.textDim, fontSize: 11, textAlign: 'center', marginTop: 28,
-    },
-    cardTitleDark: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
-    cardDescDark: { color: COLORS.textMuted, fontSize: 12, marginTop: 3 },
-    voiceStatus: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        gap: 8,
-        justifyContent: 'center',
-        marginTop: 16,
-        paddingVertical: 10,
-    },
-    voiceDot: {
-        backgroundColor: COLORS.border,
-        borderRadius: 5,
-        height: 8,
-        width: 8,
-    },
-    voiceDotListening: {
-        backgroundColor: COLORS.textDim,
-    },
-    voiceDotAwake: {
-        backgroundColor: COLORS.accent,
-    },
-    voiceStatusText: {
-        color: COLORS.textDim,
-        fontSize: 10,
-        fontWeight: '700',
-        letterSpacing: 1.2,
-    },
+    logoInner: { width: 9, height: 9, borderRadius: 3, backgroundColor: C.accent, transform: [{ rotate: '-45deg' }] },
+    logoText: { color: C.text, fontSize: 13, fontWeight: '800', letterSpacing: 2.5, flex: 1 },
+    headerRight: { alignItems: 'center', justifyContent: 'center', width: 28 },
+    micDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.border },
+    micDotActive: { backgroundColor: C.textDim },
+    micDotAwake: { backgroundColor: C.accent },
 
+    hero: { marginTop: 40, marginBottom: 8 },
+    heroLabel: { color: C.accent, fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 14 },
+    heroTitle: { color: C.text, fontSize: 38, fontWeight: '800', letterSpacing: -1, lineHeight: 42 },
+    heroAccent: { color: C.accent },
+    heroSub: { color: C.textSub, fontSize: 14, lineHeight: 22, marginTop: 14, maxWidth: 340 },
+
+    cards: { marginTop: 28, gap: 12 },
+    card: {
+        backgroundColor: C.surface,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: C.border,
+        padding: 20,
+    },
+    cardAccent: {
+        backgroundColor: C.accent,
+        borderColor: C.accent,
+    },
+    pressed: { opacity: 0.75 },
+    cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+    cardTag: {
+        backgroundColor: C.surfaceHigh,
+        borderRadius: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    cardTagAccent: { backgroundColor: 'rgba(0,0,0,0.18)' },
+    cardTagText: { color: C.textSub, fontSize: 9, fontWeight: '700', letterSpacing: 1.2 },
+    cardTagTextAccent: { color: 'rgba(6,14,26,0.7)' },
+    cardArrow: { color: C.textDim, fontSize: 18 },
+    cardArrowAccent: { color: 'rgba(6,14,26,0.6)' },
+    cardTitle: { color: C.text, fontSize: 17, fontWeight: '700', marginBottom: 6 },
+    cardTitleAccent: { color: C.bg },
+    cardDesc: { color: C.textSub, fontSize: 13, lineHeight: 19 },
+    cardDescAccent: { color: 'rgba(6,14,26,0.65)' },
+
+    voiceBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: C.surface,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: C.border,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        marginTop: 20,
+    },
+    voiceBarAwake: { borderColor: C.accent, backgroundColor: C.accentDim },
+    voicePulse: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.textDim },
+    voicePulseAwake: { backgroundColor: C.accent },
+    voiceText: { color: C.textSub, fontSize: 12, fontWeight: '600', flex: 1 },
+    voiceTextAwake: { color: C.accent },
+
+    privacy: { color: C.textDim, fontSize: 11, textAlign: 'center', marginTop: 20, lineHeight: 17 },
 });

@@ -1,29 +1,23 @@
 import ImageLabeling, { type Label } from '@react-native-ml-kit/image-labeling';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVoiceCommands } from '../hooks/useVoiceCommands';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-    ActivityIndicator,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-} from 'react-native';
 
-const COLORS = {
-    background: '#07111F',
-    surface: '#0D1C2F',
-    surfaceRaised: '#132640',
-    text: '#F6FAFF',
-    textMuted: '#9CAEC4',
-    textDim: '#6E829B',
-    accent: '#74E2D0',
-    accentSoft: '#B7F3E9',
-    accentDark: '#163E3A',
-    border: '#213752',
+const C = {
+    bg: '#060E1A',
+    surface: '#0C1929',
+    surfaceHigh: '#112236',
+    text: '#F0F6FF',
+    textSub: '#8BA0B8',
+    textDim: '#4F6478',
+    accent: '#5EEAD4',
+    accentDim: '#0D3330',
+    accentSoft: '#A7F3E8',
+    border: '#1A2E42',
 };
 
 const FRAME_INTERVAL_MS = 3200;
@@ -65,7 +59,6 @@ function addArticle(phrase: string) {
 function buildSceneCaption(labels: Label[]) {
     const seenFamilies = new Set<string>();
     const meaningfulLabels: string[] = [];
-
     [...labels]
         .filter(l => l.confidence >= 0.3)
         .sort((a, b) => b.confidence - a.confidence)
@@ -77,14 +70,11 @@ function buildSceneCaption(labels: Label[]) {
             seenFamilies.add(family);
             meaningfulLabels.push(phrase);
         });
-
     if (meaningfulLabels.length === 0) return NO_SCENE_CAPTION;
-
     const person = meaningfulLabels.find(l => ['girl', 'man', 'people', 'person', 'woman'].includes(l));
     const hasPhone = meaningfulLabels.includes('mobile phone');
     const hasMirror = meaningfulLabels.includes('mirror');
     const place = meaningfulLabels.find(l => ['bathroom', 'room'].includes(l));
-
     let caption: string;
     if (person && hasPhone) {
         const location = hasMirror ? ' in front of a mirror' : place ? ` in a ${place}` : '';
@@ -98,7 +88,6 @@ function buildSceneCaption(labels: Label[]) {
                 : `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
         caption = `I can see ${list}.`;
     }
-
     return caption.length > MAX_CAPTION_LENGTH
         ? `${caption.slice(0, MAX_CAPTION_LENGTH - 1).trimEnd()}…`
         : caption;
@@ -106,7 +95,6 @@ function buildSceneCaption(labels: Label[]) {
 
 export default function CameraScreen() {
     const router = useRouter();
-
     const [, requestPermission] = useCameraPermissions();
     const [cameraReady, setCameraReady] = useState(false);
     const [processing, setProcessing] = useState(false);
@@ -155,7 +143,6 @@ export default function CameraScreen() {
         router.back();
     }, [router]);
 
-    // Enable voice only when screen is focused
     useFocusEffect(
         useCallback(() => {
             setVoiceEnabled(true);
@@ -163,15 +150,11 @@ export default function CameraScreen() {
         }, [])
     );
 
-    useVoiceCommands(voiceEnabled, useCallback((intent: any) => {
+    useVoiceCommands(voiceEnabled, useCallback((intent) => {
         switch (intent) {
             case 'GO_HOME':
-            case 'STOP_CAMERA':
-                stopAndGoBack();
-                break;
-            case 'STOP_SPEECH':
-                void Speech.stop();
-                break;
+            case 'STOP_CAMERA': stopAndGoBack(); break;
+            case 'STOP_SPEECH': void Speech.stop(); break;
             case 'SPEAK_AGAIN':
                 if (caption && caption !== WAITING_CAPTION) {
                     void Speech.stop();
@@ -180,20 +163,13 @@ export default function CameraScreen() {
                     void captureFrame();
                 }
                 break;
-            case 'AUTO_READ_ON':
-                setAutoRead(true);
-                break;
-            case 'AUTO_READ_OFF':
-                setAutoRead(false);
-                break;
-            default:
-                break;
+            case 'AUTO_READ_ON': setAutoRead(true); break;
+            case 'AUTO_READ_OFF': setAutoRead(false); break;
+            default: break;
         }
     }, [caption, captureFrame, stopAndGoBack]));
 
-    useEffect(() => {
-        requestPermission();
-    }, [requestPermission]);
+    useEffect(() => { requestPermission(); }, [requestPermission]);
 
     useEffect(() => {
         if (!cameraReady) return;
@@ -203,36 +179,33 @@ export default function CameraScreen() {
     }, [cameraReady, captureFrame]);
 
     useEffect(() => {
-        return () => {
-            activeRef.current = false;
-            void Speech.stop();
-        };
+        return () => { activeRef.current = false; void Speech.stop(); };
     }, []);
 
     return (
-        <SafeAreaView style={styles.screen}>
+        <SafeAreaView style={s.safe}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={s.header}>
                 <Pressable
                     accessibilityLabel="Stop camera"
                     accessibilityRole="button"
                     onPress={stopAndGoBack}
-                    style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+                    style={({ pressed }) => [s.backBtn, pressed && s.pressed]}
                 >
-                    <Text style={styles.headerButtonText}>END</Text>
+                    <Text style={s.backBtnText}>← END</Text>
                 </Pressable>
-                <View style={styles.titleGroup}>
-                    <Text style={styles.title}>VIRTUAL EYE</Text>
-                    <Text style={styles.subtitle}>LIVE SCENE CAPTION</Text>
+                <View style={s.headerCenter}>
+                    <Text style={s.headerTitle}>VIRTUAL EYE</Text>
+                    <Text style={s.headerSub}>LIVE SCENE CAPTION</Text>
                 </View>
-                <View style={styles.liveBadge}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.liveBadgeText}>LIVE</Text>
+                <View style={[s.liveBadge]}>
+                    <View style={[s.liveDot, processing && s.liveDotProcessing]} />
+                    <Text style={s.liveBadgeText}>{processing ? 'READING' : 'LIVE'}</Text>
                 </View>
             </View>
 
             {/* Camera */}
-            <View style={styles.cameraFrame}>
+            <View style={s.cameraWrap}>
                 <CameraView
                     accessibilityLabel="Live camera preview"
                     animateShutter={false}
@@ -243,51 +216,67 @@ export default function CameraScreen() {
                     ref={cameraRef}
                     style={StyleSheet.absoluteFill}
                 />
+                {/* Overlay */}
                 <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                    <View style={styles.scanStatus}>
-                        <View style={styles.scanDot} />
-                        <Text style={styles.scanText}>{processing ? 'ANALYZING FRAME' : 'SCANNING'}</Text>
+                    <View style={s.scanChip}>
+                        {processing
+                            ? <ActivityIndicator color={C.accent} size="small" />
+                            : <View style={s.scanDot} />}
+                        <Text style={s.scanChipText}>{processing ? 'ANALYZING' : 'SCANNING'}</Text>
+                    </View>
+                    {/* Corner guides */}
+                    <View style={s.corners}>
+                        <View style={[s.corner, s.cTL]} />
+                        <View style={[s.corner, s.cTR]} />
+                        <View style={[s.corner, s.cBL]} />
+                        <View style={[s.corner, s.cBR]} />
                     </View>
                 </View>
             </View>
 
-            {/* Caption Panel */}
-            <View style={styles.captionPanel}>
-                <View style={styles.captionHeader}>
+            {/* Caption panel */}
+            <View style={s.panel}>
+                <View style={s.panelMeta}>
                     <View>
-                        <Text style={styles.captionEyebrow}>LATEST CAPTION</Text>
-                        <Text style={styles.captionMeta}>
-                            {lastScan ? `FRAME ANALYZED AT ${lastScan}` : 'WAITING FOR FIRST FRAME'}
+                        <Text style={s.panelLabel}>LATEST CAPTION</Text>
+                        <Text style={s.panelTime}>
+                            {lastScan ? `Analyzed at ${lastScan}` : 'Waiting for first frame...'}
                         </Text>
                     </View>
-                    {processing
-                        ? <ActivityIndicator color={COLORS.accent} size="small" />
-                        : <View style={styles.readyBadge}><View style={styles.readyDot} /><Text style={styles.readyText}>READY</Text></View>
-                    }
+                    <View style={s.readyChip}>
+                        <View style={[s.readyDot, processing && s.readyDotBusy]} />
+                        <Text style={[s.readyText, processing && s.readyTextBusy]}>
+                            {processing ? 'BUSY' : 'READY'}
+                        </Text>
+                    </View>
                 </View>
 
-                <Text accessibilityLiveRegion="polite" style={styles.captionText} numberOfLines={4}>
+                <Text accessibilityLiveRegion="polite" style={s.captionText} numberOfLines={4}>
                     {caption}
                 </Text>
 
-                <View style={styles.actions}>
+                <View style={s.actions}>
                     <Pressable
                         accessibilityLabel="Read this caption aloud"
                         accessibilityRole="button"
-                        onPress={() => { lastSpokenCaptionRef.current = caption; void Speech.stop(); Speech.speak(caption, { rate: 0.92, pitch: 1 }); }}
-                        style={({ pressed }) => [styles.speakBtn, pressed && styles.pressed]}
+                        onPress={() => {
+                            lastSpokenCaptionRef.current = caption;
+                            void Speech.stop();
+                            Speech.speak(caption, { rate: 0.92, pitch: 1 });
+                        }}
+                        style={({ pressed }) => [s.actionBtn, pressed && s.pressed]}
                     >
-                        <Text style={styles.speakBtnText}>SPEAK AGAIN</Text>
+                        <Text style={s.actionBtnText}>SPEAK AGAIN</Text>
                     </Pressable>
                     <Pressable
                         accessibilityLabel={autoRead ? 'Turn auto read off' : 'Turn auto read on'}
                         accessibilityRole="switch"
                         accessibilityState={{ checked: autoRead }}
                         onPress={() => setAutoRead(v => !v)}
-                        style={({ pressed }) => [styles.autoReadBtn, autoRead && styles.autoReadActive, pressed && styles.pressed]}
+                        style={({ pressed }) => [s.actionBtn, s.actionBtnFlex, autoRead && s.actionBtnActive, pressed && s.pressed]}
                     >
-                        <View style={[styles.autoReadDot, autoRead && styles.autoReadDotActive]} />
-                        <Text style={[styles.autoReadText, autoRead && styles.autoReadTextActive]}>
+                        <View style={[s.toggleDot, autoRead && s.toggleDotOn]} />
+                        <Text style={[s.actionBtnText, autoRead && s.actionBtnTextActive]}>
                             AUTO-READ {autoRead ? 'ON' : 'OFF'}
                         </Text>
                     </Pressable>
@@ -297,37 +286,47 @@ export default function CameraScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: COLORS.background },
-    header: { alignItems: 'center', flexDirection: 'row', height: 70, justifyContent: 'space-between', paddingHorizontal: 18 },
-    headerButton: { alignItems: 'center', borderColor: COLORS.border, borderRadius: 9, borderWidth: 1, height: 34, justifyContent: 'center', width: 55 },
-    headerButtonText: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1 },
-    pressed: { opacity: 0.72 },
-    titleGroup: { alignItems: 'center' },
-    title: { color: COLORS.text, fontSize: 13, fontWeight: '700', letterSpacing: 2 },
-    subtitle: { color: COLORS.textDim, fontSize: 9, fontWeight: '700', letterSpacing: 1.3, marginTop: 4 },
-    liveBadge: { alignItems: 'center', backgroundColor: COLORS.surfaceRaised, borderRadius: 9, flexDirection: 'row', gap: 6, height: 34, justifyContent: 'center', paddingHorizontal: 10 },
-    liveDot: { backgroundColor: COLORS.accent, borderRadius: 4, height: 7, width: 7 },
-    liveBadgeText: { color: COLORS.accent, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
-    cameraFrame: { backgroundColor: '#000', flex: 1, overflow: 'hidden' },
-    scanStatus: { alignItems: 'center', alignSelf: 'center', backgroundColor: 'rgba(7,17,31,0.75)', borderRadius: 10, flexDirection: 'row', gap: 7, marginTop: 18, paddingHorizontal: 12, paddingVertical: 8 },
-    scanDot: { backgroundColor: COLORS.accent, borderRadius: 4, height: 7, width: 7 },
-    scanText: { color: COLORS.accentSoft, fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
-    captionPanel: { backgroundColor: COLORS.surface, borderTopColor: COLORS.border, borderTopWidth: 1, paddingHorizontal: 20, paddingTop: 17 },
-    captionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-    captionEyebrow: { color: COLORS.accent, fontSize: 10, fontWeight: '700', letterSpacing: 1.7 },
-    captionMeta: { color: COLORS.textDim, fontSize: 9, fontWeight: '600', letterSpacing: 0.8, marginTop: 5 },
-    readyBadge: { alignItems: 'center', flexDirection: 'row', gap: 6 },
-    readyDot: { backgroundColor: COLORS.accent, borderRadius: 4, height: 7, width: 7 },
-    readyText: { color: COLORS.accent, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
-    captionText: { color: COLORS.text, fontSize: 18, fontWeight: '500', lineHeight: 26, marginTop: 15, minHeight: 52 },
-    actions: { alignItems: 'center', flexDirection: 'row', gap: 10, paddingBottom: 17, paddingTop: 16 },
-    speakBtn: { alignItems: 'center', borderColor: COLORS.border, borderRadius: 10, borderWidth: 1, height: 42, justifyContent: 'center', paddingHorizontal: 13 },
-    speakBtnText: { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.9 },
-    autoReadBtn: { alignItems: 'center', borderColor: COLORS.border, borderRadius: 10, flex: 1, flexDirection: 'row', gap: 8, height: 42, justifyContent: 'center' },
-    autoReadActive: { backgroundColor: COLORS.accentDark, borderColor: COLORS.accentDark },
-    autoReadDot: { borderColor: COLORS.textDim, borderRadius: 4, borderWidth: 1, height: 7, width: 7 },
-    autoReadDotActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-    autoReadText: { color: COLORS.textDim, fontSize: 10, fontWeight: '700', letterSpacing: 0.7 },
-    autoReadTextActive: { color: COLORS.accentSoft },
+const s = StyleSheet.create({
+    safe: { flex: 1, backgroundColor: C.bg },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, height: 64 },
+    backBtn: { borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+    backBtnText: { color: C.textSub, fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
+    pressed: { opacity: 0.7 },
+    headerCenter: { alignItems: 'center' },
+    headerTitle: { color: C.text, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
+    headerSub: { color: C.textDim, fontSize: 9, fontWeight: '600', letterSpacing: 1.2, marginTop: 3 },
+    liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.surfaceHigh, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
+    liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.accent },
+    liveDotProcessing: { backgroundColor: '#F4C97B' },
+    liveBadgeText: { color: C.accent, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
+
+    cameraWrap: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
+    scanChip: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'center', marginTop: 18, backgroundColor: 'rgba(6,14,26,0.8)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+    scanDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.accent },
+    scanChipText: { color: C.accentSoft, fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
+    corners: { ...StyleSheet.absoluteFillObject, margin: 28 },
+    corner: { position: 'absolute', width: 26, height: 26, borderColor: C.accent },
+    cTL: { top: 0, left: 0, borderTopWidth: 2, borderLeftWidth: 2, borderTopLeftRadius: 7 },
+    cTR: { top: 0, right: 0, borderTopWidth: 2, borderRightWidth: 2, borderTopRightRadius: 7 },
+    cBL: { bottom: 0, left: 0, borderBottomWidth: 2, borderLeftWidth: 2, borderBottomLeftRadius: 7 },
+    cBR: { bottom: 0, right: 0, borderBottomWidth: 2, borderRightWidth: 2, borderBottomRightRadius: 7 },
+
+    panel: { backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.border, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 },
+    panelMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    panelLabel: { color: C.accent, fontSize: 9, fontWeight: '700', letterSpacing: 1.6 },
+    panelTime: { color: C.textDim, fontSize: 11, marginTop: 4 },
+    readyChip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    readyDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.accent },
+    readyDotBusy: { backgroundColor: '#F4C97B' },
+    readyText: { color: C.accent, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
+    readyTextBusy: { color: '#F4C97B' },
+    captionText: { color: C.text, fontSize: 17, fontWeight: '500', lineHeight: 26, marginTop: 14, minHeight: 52 },
+    actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+    actionBtn: { alignItems: 'center', borderWidth: 1, borderColor: C.border, borderRadius: 12, height: 44, justifyContent: 'center', paddingHorizontal: 14, flexDirection: 'row', gap: 8 },
+    actionBtnFlex: { flex: 1 },
+    actionBtnActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+    actionBtnText: { color: C.textSub, fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
+    actionBtnTextActive: { color: C.accentSoft },
+    toggleDot: { width: 7, height: 7, borderRadius: 4, borderWidth: 1, borderColor: C.textDim },
+    toggleDotOn: { backgroundColor: C.accent, borderColor: C.accent },
 });
