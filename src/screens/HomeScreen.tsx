@@ -1,4 +1,7 @@
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import * as Speech from 'expo-speech';
+import { useVoiceCommands } from '../hooks/useVoiceCommands';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -17,6 +20,32 @@ const COLORS = {
 
 export default function HomeScreen() {
     const router = useRouter();
+    const [voiceEnabled, setVoiceEnabled] = useState(false);
+
+    // Only enable voice when this screen is focused
+    useFocusEffect(
+        useCallback(() => {
+            setVoiceEnabled(true);
+            return () => setVoiceEnabled(false);
+        }, [])
+    );
+
+    const { voiceState } = useVoiceCommands(voiceEnabled, (intent) => {
+        switch (intent) {
+            case 'START_CAMERA':
+                router.push('/camera');
+                break;
+            case 'OPEN_TEXT_READER':
+                router.push('/text-reader');
+                break;
+            case 'GO_HOME':
+            case 'STOP_SPEECH':
+                void Speech.stop();
+                break;
+            default:
+                break;
+        }
+    });
 
     return (
         <SafeAreaView style={styles.safe}>
@@ -105,6 +134,23 @@ export default function HomeScreen() {
                 {/* Footer note */}
                 <Text style={styles.footerNote}>Camera access is used only while you are scanning.</Text>
 
+                {/* Voice status indicator */}
+                <View style={styles.voiceStatus}>
+                    <View style={[
+                        styles.voiceDot,
+                        voiceState === 'awake' && styles.voiceDotAwake,
+                        voiceState === 'listening' && styles.voiceDotListening,
+                    ]} />
+                    <Text style={styles.voiceStatusText}>
+                        {voiceState === 'listening' && 'SAY "HEY VISION" TO WAKE'}
+                        {voiceState === 'awake' && 'LISTENING — SAY A COMMAND'}
+                        {voiceState === 'processing' && 'PROCESSING...'}
+                        {voiceState === 'permission_denied' && 'MICROPHONE PERMISSION DENIED'}
+                        {voiceState === 'error' && 'VOICE UNAVAILABLE'}
+                        {voiceState === 'idle' && 'VOICE OFF'}
+                    </Text>
+                </View>
+
             </ScrollView>
         </SafeAreaView>
     );
@@ -157,5 +203,31 @@ const styles = StyleSheet.create({
     },
     cardTitleDark: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
     cardDescDark: { color: COLORS.textMuted, fontSize: 12, marginTop: 3 },
+    voiceStatus: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 8,
+        justifyContent: 'center',
+        marginTop: 16,
+        paddingVertical: 10,
+    },
+    voiceDot: {
+        backgroundColor: COLORS.border,
+        borderRadius: 5,
+        height: 8,
+        width: 8,
+    },
+    voiceDotListening: {
+        backgroundColor: COLORS.textDim,
+    },
+    voiceDotAwake: {
+        backgroundColor: COLORS.accent,
+    },
+    voiceStatusText: {
+        color: COLORS.textDim,
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 1.2,
+    },
 
 });

@@ -1,8 +1,9 @@
 import ImageLabeling, { type Label } from '@react-native-ml-kit/image-labeling';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useVoiceCommands } from '../hooks/useVoiceCommands';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -105,12 +106,14 @@ function buildSceneCaption(labels: Label[]) {
 
 export default function CameraScreen() {
     const router = useRouter();
+
     const [, requestPermission] = useCameraPermissions();
     const [cameraReady, setCameraReady] = useState(false);
     const [processing, setProcessing] = useState(false);
-    const [autoRead, setAutoRead] = useState(true);
+    const [autoRead, setAutoRead] = useState(false);
     const [caption, setCaption] = useState(WAITING_CAPTION);
     const [lastScan, setLastScan] = useState<string | null>(null);
+    const [voiceEnabled, setVoiceEnabled] = useState(false);
 
     const cameraRef = useRef<CameraView>(null);
     const activeRef = useRef(true);
@@ -146,6 +149,48 @@ export default function CameraScreen() {
         }
     }, [announceCaption]);
 
+    const stopAndGoBack = useCallback(() => {
+        activeRef.current = false;
+        void Speech.stop();
+        router.back();
+    }, [router]);
+
+    // Enable voice only when screen is focused
+    useFocusEffect(
+        useCallback(() => {
+            setVoiceEnabled(true);
+            return () => setVoiceEnabled(false);
+        }, [])
+    );
+
+    useVoiceCommands(voiceEnabled, useCallback((intent: any) => {
+        switch (intent) {
+            case 'GO_HOME':
+            case 'STOP_CAMERA':
+                stopAndGoBack();
+                break;
+            case 'STOP_SPEECH':
+                void Speech.stop();
+                break;
+            case 'SPEAK_AGAIN':
+                if (caption && caption !== WAITING_CAPTION) {
+                    void Speech.stop();
+                    Speech.speak(caption, { rate: 0.92, pitch: 1 });
+                } else {
+                    void captureFrame();
+                }
+                break;
+            case 'AUTO_READ_ON':
+                setAutoRead(true);
+                break;
+            case 'AUTO_READ_OFF':
+                setAutoRead(false);
+                break;
+            default:
+                break;
+        }
+    }, [caption, captureFrame, stopAndGoBack]));
+
     useEffect(() => {
         requestPermission();
     }, [requestPermission]);
@@ -163,12 +208,6 @@ export default function CameraScreen() {
             void Speech.stop();
         };
     }, []);
-
-    const stopAndGoBack = () => {
-        activeRef.current = false;
-        void Speech.stop();
-        router.back();
-    };
 
     return (
         <SafeAreaView style={styles.screen}>
