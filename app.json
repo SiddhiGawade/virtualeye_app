@@ -31,6 +31,14 @@
           "recordAudioAndroid": false
         }
       ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Virtual Eye uses the microphone to listen for voice commands.",
+          "speechRecognitionPermission": "Virtual Eye uses speech recognition to understand voice commands."
+        }
+      ],
+      "expo-router"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
