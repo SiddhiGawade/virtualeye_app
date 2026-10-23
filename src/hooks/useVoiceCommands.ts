@@ -1,8 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-    ExpoSpeechRecognitionModule,
-    useSpeechRecognitionEvent,
-} from 'expo-speech-recognition';
 import * as Speech from 'expo-speech';
 import {
     HELP_TEXT,
@@ -10,6 +6,43 @@ import {
     parseVoiceCommand,
     type VoiceIntent,
 } from '../services/voiceCommandService';
+
+declare const require: (moduleName: string) => unknown;
+
+type SpeechRecognitionEvent = {
+    results?: Array<{ transcript?: string }>;
+    isFinal?: boolean;
+    error?: string;
+};
+
+type SpeechRecognitionApi = {
+    ExpoSpeechRecognitionModule: {
+        requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+        start: (options: {
+            lang: string;
+            interimResults: boolean;
+            continuous: boolean;
+        }) => void;
+        stop: () => void;
+    };
+    useSpeechRecognitionEvent: (
+        eventName: 'result' | 'end' | 'error',
+        listener: (event: SpeechRecognitionEvent) => void,
+    ) => void;
+};
+
+function loadSpeechRecognitionApi(): SpeechRecognitionApi | null {
+    try {
+        const module = require('expo-speech-recognition') as Partial<SpeechRecognitionApi>;
+        if (!module.ExpoSpeechRecognitionModule || !module.useSpeechRecognitionEvent) return null;
+        return module as SpeechRecognitionApi;
+    } catch {
+        return null;
+    }
+}
+
+const speechRecognitionApi = loadSpeechRecognitionApi();
+const useOptionalSpeechRecognitionEvent = speechRecognitionApi?.useSpeechRecognitionEvent ?? (() => undefined);
 
 export type VoiceState =
     | 'idle'
@@ -63,13 +96,18 @@ export function useVoiceCommands(
 
     const doStart = useCallback(async () => {
         if (sessionActiveRef.current || !enabledRef.current) return;
-        const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+        if (!speechRecognitionApi) {
+            setVoiceState('error');
+            return;
+        }
+
+        const permission = await speechRecognitionApi.ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (!permission.granted) {
             setVoiceState('permission_denied');
             return;
         }
         try {
-            ExpoSpeechRecognitionModule.start({
+            speechRecognitionApi.ExpoSpeechRecognitionModule.start({
                 lang: 'en-US',
                 interimResults: false,
                 continuous: false,
@@ -97,7 +135,7 @@ export function useVoiceCommands(
         if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
         awakeRef.current = false;
         sessionActiveRef.current = false;
-        try { ExpoSpeechRecognitionModule.stop(); } catch { /* ignore */ }
+        try { speechRecognitionApi?.ExpoSpeechRecognitionModule.stop(); } catch { /* ignore */ }
         setVoiceState('idle');
     }, [clearAwakeTimeout]);
 
@@ -136,7 +174,7 @@ export function useVoiceCommands(
         setLastIntent(intent);
     }
 
-    useSpeechRecognitionEvent('result', (event) => {
+    useOptionalSpeechRecognitionEvent('result', (event) => {
         if (!enabledRef.current) return;
         const transcript = event.results?.[0]?.transcript?.trim() ?? '';
         if (!transcript) return;
@@ -168,12 +206,12 @@ export function useVoiceCommands(
         handleIntent(parseVoiceCommand(transcript));
     });
 
-    useSpeechRecognitionEvent('end', () => {
+    useOptionalSpeechRecognitionEvent('end', () => {
         sessionActiveRef.current = false;
         if (enabledRef.current) scheduleRestart();
     });
 
-    useSpeechRecognitionEvent('error', (event) => {
+    useOptionalSpeechRecognitionEvent('error', (event) => {
         sessionActiveRef.current = false;
         if (!enabledRef.current) return;
         const retriable = ['no-speech', 'aborted', 'audio-capture'];

@@ -1,10 +1,15 @@
-import ImageLabeling, { type Label } from '@react-native-ml-kit/image-labeling';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+    analyzeSceneFrame,
+    getSceneAnalysisConfig,
+    isSceneAnalysisConfigured,
+    LiveSceneAnalysisSocket,
+} from '../services/sceneAnalysisService';
 import { useVoiceCommands } from '../hooks/useVoiceCommands';
 
 const C = {
@@ -20,78 +25,13 @@ const C = {
     border: '#1A2E42',
 };
 
-const FRAME_INTERVAL_MS = 3200;
-const MAX_CAPTION_LENGTH = 320;
-const WAITING_CAPTION = 'Watching the scene for details...';
-const NO_SCENE_CAPTION = 'I cannot get a clear understanding of the scene yet. Hold steady and try again.';
+const FRAME_INTERVAL_MS = 1000;
+const WAITING_CAPTION = 'Watching the live scene for details...';
+const BACKEND_NOT_CONFIGURED = 'Connect the scene-analysis backend to start live captioning.';
+const BACKEND_ERROR = 'The live scene-analysis backend is unavailable. Hold steady and try again.';
+const SCENE_ANALYSIS_CONFIG = getSceneAnalysisConfig();
 
-const IGNORED_LABELS = new Set([
-    'arm', 'body', 'ceiling', 'clothing', 'design', 'entity', 'face', 'finger', 'floor',
-    'font', 'hair', 'hand', 'head', 'human body', 'image', 'indoor', 'lighting', 'object',
-    'pattern', 'photo', 'photograph', 'picture', 'rectangle', 'skin', 'sleeve', 'text', 'wall',
-]);
-
-const LABEL_ALIASES: Record<string, string> = {
-    bathroom: 'bathroom', cell: 'mobile phone', 'cell phone': 'mobile phone',
-    girl: 'girl', human: 'person', man: 'man', mirror: 'mirror', mobile: 'mobile phone',
-    'mobile phone': 'mobile phone', people: 'people', person: 'person',
-    phone: 'mobile phone', room: 'room', selfie: 'selfie',
-    smartphone: 'mobile phone', woman: 'woman',
-};
-
-function normalizeLabel(text: string) {
-    return text.replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-function getLabelFamily(label: string) {
-    if (label.includes('phone') || label.includes('smartphone') || label === 'cell' || label === 'mobile') return 'phone';
-    if (['girl', 'man', 'woman', 'person', 'people', 'human'].some(v => label.includes(v))) return 'person';
-    if (label.includes('mirror')) return 'mirror';
-    return label;
-}
-
-function addArticle(phrase: string) {
-    if (phrase === 'people' || phrase.startsWith('some ')) return phrase;
-    if (/^(a|an|the) /.test(phrase)) return phrase;
-    return /^[aeiou]/i.test(phrase) ? `an ${phrase}` : `a ${phrase}`;
-}
-
-function buildSceneCaption(labels: Label[]) {
-    const seenFamilies = new Set<string>();
-    const meaningfulLabels: string[] = [];
-    [...labels]
-        .filter(l => l.confidence >= 0.3)
-        .sort((a, b) => b.confidence - a.confidence)
-        .forEach(label => {
-            const norm = normalizeLabel(label.text);
-            const phrase = LABEL_ALIASES[norm] ?? norm;
-            const family = getLabelFamily(norm);
-            if (!norm || IGNORED_LABELS.has(norm) || seenFamilies.has(family) || meaningfulLabels.includes(phrase)) return;
-            seenFamilies.add(family);
-            meaningfulLabels.push(phrase);
-        });
-    if (meaningfulLabels.length === 0) return NO_SCENE_CAPTION;
-    const person = meaningfulLabels.find(l => ['girl', 'man', 'people', 'person', 'woman'].includes(l));
-    const hasPhone = meaningfulLabels.includes('mobile phone');
-    const hasMirror = meaningfulLabels.includes('mirror');
-    const place = meaningfulLabels.find(l => ['bathroom', 'room'].includes(l));
-    let caption: string;
-    if (person && hasPhone) {
-        const location = hasMirror ? ' in front of a mirror' : place ? ` in a ${place}` : '';
-        caption = `I can see ${addArticle(person)} holding a mobile phone${location}.`;
-    } else if (person && hasMirror) {
-        caption = `I can see ${addArticle(person)} in front of a mirror.`;
-    } else {
-        const items = meaningfulLabels.slice(0, 4).map(addArticle);
-        const list = items.length === 1 ? items[0]
-            : items.length === 2 ? `${items[0]} and ${items[1]}`
-                : `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
-        caption = `I can see ${list}.`;
-    }
-    return caption.length > MAX_CAPTION_LENGTH
-        ? `${caption.slice(0, MAX_CAPTION_LENGTH - 1).trimEnd()}…`
-        : caption;
-}
+type BackendStatus = 'not_configured' | 'connecting' | 'ready' | 'error';
 
 export default function CameraScreen() {
     const router = useRouter();
@@ -102,8 +42,14 @@ export default function CameraScreen() {
     const [caption, setCaption] = useState(WAITING_CAPTION);
     const [lastScan, setLastScan] = useState<string | null>(null);
     const [voiceEnabled, setVoiceEnabled] = useState(false);
+    const [backendStatus, setBackendStatus] = useState<BackendStatus>(
+        isSceneAnalysisConfigured()
+            ? SCENE_ANALYSIS_CONFIG.wsUrl ? 'connecting' : 'ready'
+            : 'not_configured'
+    );
 
     const cameraRef = useRef<CameraView>(null);
+    const sceneSocketRef = useRef<LiveSceneAnalysisSocket | null>(null);
     const activeRef = useRef(true);
     const cameraReadyRef = useRef(false);
     const processingRef = useRef(false);
@@ -120,17 +66,33 @@ export default function CameraScreen() {
 
     const captureFrame = useCallback(async () => {
         if (!activeRef.current || !cameraReadyRef.current || processingRef.current || !cameraRef.current) return;
+        if (!isSceneAnalysisConfigured()) {
+            setBackendStatus('not_configured');
+            announceCaption(BACKEND_NOT_CONFIGURED, false);
+            return;
+        }
+
         processingRef.current = true;
         setProcessing(true);
         try {
-            const picture = await cameraRef.current.takePictureAsync({ quality: 0.4, shutterSound: false, skipProcessing: false });
+            const picture = await cameraRef.current.takePictureAsync({ quality: 0.45, shutterSound: false, skipProcessing: false });
             if (!picture || !activeRef.current) return;
-            const labels = await ImageLabeling.label(picture.uri);
-            if (!activeRef.current) return;
-            announceCaption(buildSceneCaption(labels), true);
+
+            const result = SCENE_ANALYSIS_CONFIG.wsUrl
+                ? await sceneSocketRef.current?.sendFrame(picture.uri)
+                : await analyzeSceneFrame(picture.uri);
+            if (!result || !activeRef.current) return;
+
+            setBackendStatus('ready');
+            announceCaption(result.caption, true);
             setLastScan(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-        } catch {
-            if (activeRef.current) announceCaption('I could not understand this scene yet. Hold steady and try again.', true);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown scene-analysis error';
+            console.warn(`[SceneAnalysis] ${message}`);
+            if (activeRef.current) {
+                setBackendStatus('error');
+                announceCaption(BACKEND_ERROR, true);
+            }
         } finally {
             processingRef.current = false;
             setProcessing(false);
@@ -139,6 +101,8 @@ export default function CameraScreen() {
 
     const stopAndGoBack = useCallback(() => {
         activeRef.current = false;
+        sceneSocketRef.current?.close();
+        sceneSocketRef.current = null;
         void Speech.stop();
         router.back();
     }, [router]);
@@ -156,7 +120,7 @@ export default function CameraScreen() {
             case 'STOP_CAMERA': stopAndGoBack(); break;
             case 'STOP_SPEECH': void Speech.stop(); break;
             case 'SPEAK_AGAIN':
-                if (caption && caption !== WAITING_CAPTION) {
+                if (caption && caption !== WAITING_CAPTION && caption !== BACKEND_NOT_CONFIGURED) {
                     void Speech.stop();
                     Speech.speak(caption, { rate: 0.92, pitch: 1 });
                 } else {
@@ -169,18 +133,63 @@ export default function CameraScreen() {
         }
     }, [caption, captureFrame, stopAndGoBack]));
 
-    useEffect(() => { requestPermission(); }, [requestPermission]);
+    useEffect(() => {
+        if (Platform.OS !== 'web') void requestPermission();
+    }, [requestPermission]);
+
+    useEffect(() => {
+        if (!cameraReady || !SCENE_ANALYSIS_CONFIG.wsUrl) return;
+
+        const socket = new LiveSceneAnalysisSocket(SCENE_ANALYSIS_CONFIG.wsUrl);
+        sceneSocketRef.current = socket;
+        setBackendStatus('connecting');
+        void socket.connect()
+            .then(() => { if (activeRef.current) setBackendStatus('ready'); })
+            .catch(() => { if (activeRef.current) setBackendStatus('error'); });
+
+        return () => {
+            socket.close();
+            if (sceneSocketRef.current === socket) sceneSocketRef.current = null;
+        };
+    }, [cameraReady]);
 
     useEffect(() => {
         if (!cameraReady) return;
+        if (!isSceneAnalysisConfigured()) {
+            setBackendStatus('not_configured');
+            announceCaption(BACKEND_NOT_CONFIGURED, false);
+            return;
+        }
+
         void captureFrame();
         const interval = setInterval(() => void captureFrame(), FRAME_INTERVAL_MS);
         return () => clearInterval(interval);
-    }, [cameraReady, captureFrame]);
+    }, [announceCaption, cameraReady, captureFrame]);
 
     useEffect(() => {
-        return () => { activeRef.current = false; void Speech.stop(); };
+        return () => {
+            activeRef.current = false;
+            sceneSocketRef.current?.close();
+            void Speech.stop();
+        };
     }, []);
+
+    const statusLabel = processing
+        ? 'READING'
+        : backendStatus === 'connecting'
+            ? 'CONNECTING'
+            : backendStatus === 'error'
+                ? 'OFFLINE'
+                : backendStatus === 'not_configured'
+                    ? 'SETUP'
+                    : 'LIVE';
+    const statusText = processing
+        ? 'ANALYZING'
+        : backendStatus === 'not_configured'
+            ? 'BACKEND REQUIRED'
+            : backendStatus === 'error'
+                ? 'RECONNECTING'
+                : 'SCANNING';
 
     return (
         <SafeAreaView style={s.safe}>
@@ -198,9 +207,9 @@ export default function CameraScreen() {
                     <Text style={s.headerTitle}>VIRTUAL EYE</Text>
                     <Text style={s.headerSub}>LIVE SCENE CAPTION</Text>
                 </View>
-                <View style={[s.liveBadge]}>
-                    <View style={[s.liveDot, processing && s.liveDotProcessing]} />
-                    <Text style={s.liveBadgeText}>{processing ? 'READING' : 'LIVE'}</Text>
+                <View style={s.liveBadge}>
+                    <View style={[s.liveDot, processing && s.liveDotProcessing, backendStatus === 'error' && s.liveDotError]} />
+                    <Text style={[s.liveBadgeText, backendStatus === 'error' && s.liveBadgeTextError]}>{statusLabel}</Text>
                 </View>
             </View>
 
@@ -222,7 +231,7 @@ export default function CameraScreen() {
                         {processing
                             ? <ActivityIndicator color={C.accent} size="small" />
                             : <View style={s.scanDot} />}
-                        <Text style={s.scanChipText}>{processing ? 'ANALYZING' : 'SCANNING'}</Text>
+                        <Text style={s.scanChipText}>{statusText}</Text>
                     </View>
                     {/* Corner guides */}
                     <View style={s.corners}>
@@ -245,8 +254,8 @@ export default function CameraScreen() {
                     </View>
                     <View style={s.readyChip}>
                         <View style={[s.readyDot, processing && s.readyDotBusy]} />
-                        <Text style={[s.readyText, processing && s.readyTextBusy]}>
-                            {processing ? 'BUSY' : 'READY'}
+                        <Text style={[s.readyText, processing && s.readyTextBusy, backendStatus === 'error' && s.readyTextError]}>
+                            {processing ? 'BUSY' : statusLabel}
                         </Text>
                     </View>
                 </View>
@@ -298,13 +307,15 @@ const s = StyleSheet.create({
     liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.surfaceHigh, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
     liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.accent },
     liveDotProcessing: { backgroundColor: '#F4C97B' },
+    liveDotError: { backgroundColor: '#F87171' },
     liveBadgeText: { color: C.accent, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
+    liveBadgeTextError: { color: '#F87171' },
 
     cameraWrap: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
     scanChip: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'center', marginTop: 18, backgroundColor: 'rgba(6,14,26,0.8)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
     scanDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.accent },
     scanChipText: { color: C.accentSoft, fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
-    corners: { ...StyleSheet.absoluteFillObject, margin: 28 },
+    corners: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, margin: 28 },
     corner: { position: 'absolute', width: 26, height: 26, borderColor: C.accent },
     cTL: { top: 0, left: 0, borderTopWidth: 2, borderLeftWidth: 2, borderTopLeftRadius: 7 },
     cTR: { top: 0, right: 0, borderTopWidth: 2, borderRightWidth: 2, borderTopRightRadius: 7 },
@@ -320,6 +331,7 @@ const s = StyleSheet.create({
     readyDotBusy: { backgroundColor: '#F4C97B' },
     readyText: { color: C.accent, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
     readyTextBusy: { color: '#F4C97B' },
+    readyTextError: { color: '#F87171' },
     captionText: { color: C.text, fontSize: 17, fontWeight: '500', lineHeight: 26, marginTop: 14, minHeight: 52 },
     actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
     actionBtn: { alignItems: 'center', borderWidth: 1, borderColor: C.border, borderRadius: 12, height: 44, justifyContent: 'center', paddingHorizontal: 14, flexDirection: 'row', gap: 8 },

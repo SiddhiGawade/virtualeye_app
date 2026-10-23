@@ -119,19 +119,20 @@ export default function SettingsScreen() {
                 </Section>
 
                 <Section title="SCENE CAMERA">
-                    <Row label="Frame interval" value="3.2 seconds" />
-                    <Row label="ML model" value="On-device ML Kit" />
-                    <Row label="Network required" value="No" last />
+                    <Row label="Frame interval" value="1 second" />
+                    <Row label="Detection" value="YOLO backend" />
+                    <Row label="Description" value="BLIP backend" />
+                    <Row label="Distance" value="Not enabled" last />
                 </Section>
 
                 <Section title="ABOUT">
                     <Row label="App" value="Virtual Eye" />
                     <Row label="Version" value="1.0.0" />
-                    <Row label="Privacy" value="On-device only" last />
+                    <Row label="Privacy" value="Configured backend" last />
                 </Section>
 
                 <Text style={s.footer}>
-                    All camera frames, voice transcripts, and scene descriptions are processed on your device and never uploaded.
+                    Camera frames are sent to the configured scene-analysis backend. Do not use an untrusted backend URL.
                 </Text>
 
             </ScrollView>

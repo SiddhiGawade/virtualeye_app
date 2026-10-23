@@ -32,7 +32,7 @@ const CARDS: FeatureCard[] = [
         route: '/camera',
         label: 'Start camera',
         title: 'Scene Camera',
-        desc: 'Live scene captioning with on-device ML — no internet required',
+        desc: 'Live scene captioning with YOLO detection and BLIP descriptions',
         accent: true,
         tag: 'LIVE',
     },
@@ -97,7 +97,7 @@ export default function HomeScreen() {
                     <Text style={s.heroLabel}>ASSISTIVE VISION</Text>
                     <Text style={s.heroTitle}>See what's{'\n'}<Text style={s.heroAccent}>in front of you.</Text></Text>
                     <Text style={s.heroSub}>
-                        Virtual Eye describes your surroundings in real time using on-device AI - privately, quietly, instantly.
+                        Virtual Eye analyzes live camera frames and describes your surroundings in real time.
                     </Text>
                 </View>
 
@@ -140,7 +140,7 @@ export default function HomeScreen() {
                     </Text>
                 </View>
 
-                <Text style={s.privacy}>All processing happens on your device. No data leaves your phone.</Text>
+                <Text style={s.privacy}>Scene frames are sent only to the configured analysis backend for captioning.</Text>
 
             </ScrollView>
         </SafeAreaView>
